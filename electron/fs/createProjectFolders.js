@@ -83,14 +83,113 @@ export function createProjectFolders({ targetPath, projectName, template, shots 
       });
     }
 
+    //
+    // 🔥 Step 4: Create Shots Folder
+    //
+    const shotsRoot = path.join(projectRoot, "shots");
+    if (!fs.existsSync(shotsRoot)) {
+      fs.mkdirSync(shotsRoot, { recursive: true });
+      console.log("Created shots folder:", shotsRoot);
+    }
+
+    //
+    // 🔥 Step 5: Loop through each shot and create subfolders
+    //
+    if (Array.isArray(shots)) {
+      shots.forEach(shot => {
+        const shotPath = path.join(shotsRoot, shot);
+
+        if (!fs.existsSync(shotPath)) {
+          fs.mkdirSync(shotPath, { recursive: true });
+          console.log("Created shot:", shotPath);
+        }
+
+        // Create shot structure folders
+        if (template && template.shotStructure && Array.isArray(template.shotStructure)) {
+          template.shotStructure.forEach(sub => {
+            const subPath = path.join(shotPath, sub);
+            if (!fs.existsSync(subPath)) {
+              fs.mkdirSync(subPath, { recursive: true });
+              console.log("Created shot subfolder:", subPath);
+            }
+          });
+        }
+      });
+    }
+
     return {
       success: true,
-      message: "Root + top-level folders created.",
+      message: "Project structure created successfully.",
       finalPath: projectRoot
     };
 
   } catch (err) {
     console.error("❌ Error creating project folders:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Adds a single shot to an existing project.
+ * @param {string} projectPath - Path to the existing project root
+ * @param {string} shotName - Name of the shot folder (e.g., "sh010")
+ * @param {object} template - Template structure from templates.json
+ * @returns {object} success/error message
+ */
+export function addShot({ projectPath, shotName, template }) {
+  console.log("🚀 addShot() called with:", {
+    projectPath, shotName, template
+  });
+
+  // Validate required parameters
+  if (!projectPath || !shotName) {
+    return { success: false, error: "Missing required parameters: projectPath and shotName" };
+  }
+  if (!template || typeof template !== 'object') {
+    return { success: false, error: "Missing or invalid template object" };
+  }
+
+  try {
+    // Verify project path exists
+    if (!fs.existsSync(projectPath)) {
+      return { success: false, error: `Project path does not exist: ${projectPath}` };
+    }
+
+    // Create shots folder if it doesn't exist
+    const shotsRoot = path.join(projectPath, "shots");
+    if (!fs.existsSync(shotsRoot)) {
+      fs.mkdirSync(shotsRoot, { recursive: true });
+      console.log("Created shots folder:", shotsRoot);
+    }
+
+    // Create the shot folder
+    const shotPath = path.join(shotsRoot, shotName);
+    if (fs.existsSync(shotPath)) {
+      return { success: false, error: `Shot folder already exists: ${shotPath}` };
+    }
+
+    fs.mkdirSync(shotPath, { recursive: true });
+    console.log("Created shot:", shotPath);
+
+    // Create shot structure folders from template
+    if (template && template.shotStructure && Array.isArray(template.shotStructure)) {
+      template.shotStructure.forEach(sub => {
+        const subPath = path.join(shotPath, sub);
+        if (!fs.existsSync(subPath)) {
+          fs.mkdirSync(subPath, { recursive: true });
+          console.log("Created shot subfolder:", subPath);
+        }
+      });
+    }
+
+    return {
+      success: true,
+      message: `Shot "${shotName}" added successfully.`,
+      shotPath: shotPath
+    };
+
+  } catch (err) {
+    console.error("❌ Error adding shot:", err);
     return { success: false, error: err.message };
   }
 }

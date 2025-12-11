@@ -1,0 +1,12 @@
+{
+  "vfx": {
+    "root": ["assets", "reference", "deliveries"],
+    "assets": ["characters", "props", "environments"],
+    "shotStructure": ["plate", "anim", "comp", "renders"]
+  },
+  "animation": {
+    "root": ["assets", "scenes", "renders"],
+    "assets": ["characters", "props", "backgrounds"],
+    "shotStructure": ["layout", "anim", "comp"]
+  }
+}

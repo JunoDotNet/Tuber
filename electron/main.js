@@ -3,6 +3,8 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createProjectFolders } from "./fs/createProjectFolders.js";
+
 
 // Get __dirname in ES module style
 const __filename = fileURLToPath(import.meta.url);
@@ -38,6 +40,14 @@ function loadTemplates() {
 ipcMain.handle('get-templates', () => {
   return loadTemplates();
 });
+
+ipcMain.handle("create-project", (event, data) => {
+  console.log("📦 IPC received create-project:", data);
+  return createProjectFolders(data);
+});
+
+
+
 
 app.whenReady().then(createWindow);
 

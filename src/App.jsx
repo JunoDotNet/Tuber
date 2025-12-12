@@ -19,10 +19,31 @@ function App() {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
   const nodeRefs = useRef({});
+  const [selectedPath, setSelectedPath] = useState(null);
+  const [selectedName, setSelectedName] = useState('');
+  const [showRename, setShowRename] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [showShotDialog, setShowShotDialog] = useState(false);
+  const [shotInputValue, setShotInputValue] = useState('');
+  const [showFolderDialog, setShowFolderDialog] = useState(false);
+  const [folderDialogMode, setFolderDialogMode] = useState('same');
+  const [folderInputValue, setFolderInputValue] = useState('');
+
+  const collectPaths = (node, base = '/') => {
+    const nodePath = (base.endsWith('/') ? base : base + '/') + (node.name || '');
+    let paths = [];
+    if (node.children && node.children.length > 0) {
+      paths.push(nodePath);
+      node.children.forEach((child) => {
+        paths = paths.concat(collectPaths(child, nodePath));
+      });
+    }
+    return paths;
+  };
 
   useEffect(() => {
     if (folderTree?.name) {
-      setExpandedPaths(new Set([`/${folderTree.name}`]));
+      setExpandedPaths(new Set(collectPaths(folderTree, '/')));
       setPan({ x: 0, y: 0 });
       setZoom(1);
     }
@@ -47,6 +68,39 @@ function App() {
 
     setZoom(newZoom);
     setPan({ x: newPanX, y: newPanY });
+  };
+
+  const pathToRelative = (nodePath) => {
+    const parts = nodePath.split('/').filter(Boolean);
+    // remove project root name
+    parts.shift();
+    return parts.join('/');
+  };
+
+  const handleRename = async () => {
+    if (!selectedPath) return;
+    const rel = pathToRelative(selectedPath);
+    if (!rel) {
+      alert('Cannot rename the project root');
+      return;
+    }
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      alert('Enter a folder name');
+      return;
+    }
+    const res = await window.electronAPI.renameFolder({
+      projectPath,
+      oldRelativePath: rel,
+      newName: trimmed
+    });
+    if (res?.success) {
+      setShowRename(false);
+      const refresh = await window.electronAPI.readProjectStructure(projectPath);
+      if (refresh.success) setFolderTree(refresh.tree);
+    } else {
+      alert('Error: ' + (res?.error || 'Unknown'));
+    }
   };
 
   useEffect(() => {
@@ -214,68 +268,266 @@ function App() {
 
       {currentSlide === 1 && (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-          <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 1000 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
-              <button onClick={() => setQuickMenuOpen((prev) => !prev)} style={{ padding: '10px 12px' }}>+
+
+
+          <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 1100, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <button
+              onClick={() => { setShowShotDialog(true); setShotInputValue(''); }}
+              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #999', background: '#fff', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
+            >
+              + Shot
+            </button>
+
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => selectedPath && setQuickMenuOpen((prev) => !prev)}
+                disabled={!selectedPath}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #999',
+                  background: '#fff',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: selectedPath ? 'pointer' : 'default',
+                  width: '180px',
+                  height: '36px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  opacity: selectedPath ? 1 : 0.5
+                }}
+              >
+                {selectedPath ? `⚙ ${selectedName}` : '⚙ Select folder'}
               </button>
-              {quickMenuOpen && (
-                <div style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 6, padding: 12, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      placeholder="Shot name (e.g., sh010)"
-                      value={quickShotName}
-                      onChange={(e) => setQuickShotName(e.target.value)}
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter') {
-                          if (!quickShotName.trim()) { alert('Enter shot name'); return; }
-                          const res = await window.electronAPI.addShot({ projectPath, shotName: quickShotName, template: templates[selectedTemplate] });
-                          if (res?.success) {
-                            setQuickShotName('');
-                            setQuickMenuOpen(false);
-                            const refresh = await window.electronAPI.readProjectStructure(projectPath);
-                            if (refresh.success) setFolderTree(refresh.tree);
-                          } else {
-                            alert('Error: ' + (res?.error || 'Unknown'));
-                          }
-                        }
-                      }}
-                      style={{ padding: '8px', border: '1px solid #ddd', borderRadius: 6 }}
-                    />
+              {quickMenuOpen && selectedPath && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 8,
+                  background: '#fff',
+                  border: '1px solid #ddd',
+                  borderRadius: 6,
+                  padding: 8,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  minWidth: 140,
+                  zIndex: 10
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <button
-                      onClick={async () => {
-                        if (!quickShotName.trim()) { alert('Enter shot name'); return; }
-                        const res = await window.electronAPI.addShot({ projectPath, shotName: quickShotName, template: templates[selectedTemplate] });
-                        if (res?.success) {
-                          setQuickShotName('');
-                          setQuickMenuOpen(false);
-                          const refresh = await window.electronAPI.readProjectStructure(projectPath);
-                          if (refresh.success) setFolderTree(refresh.tree);
-                        } else {
-                          alert('Error: ' + (res?.error || 'Unknown'));
-                        }
-                      }}
-                      style={{ padding: '8px 10px' }}
-                    >Add Shot</button>
+                      onClick={() => { setShowRename(true); setRenameValue(selectedName); setQuickMenuOpen(false); }}
+                      style={{ padding: '6px 10px', textAlign: 'left', border: '1px solid #ddd', borderRadius: 4, background: '#f8f8f8', cursor: 'pointer' }}
+                    >
+                      Rename
+                    </button>
                     <button
-                      onClick={async () => {
-                        const rel = window.prompt('Relative folder path to add (e.g., assets/renders)');
-                        if (!rel) return;
-                        const res = await window.electronAPI.addFolder({ projectPath, relativePath: rel });
-                        if (res?.success) {
-                          const refresh = await window.electronAPI.readProjectStructure(projectPath);
-                          if (refresh.success) setFolderTree(refresh.tree);
-                        } else {
-                          alert('Error: ' + (res?.error || 'Unknown'));
-                        }
+                      onClick={() => {
+                        setFolderDialogMode('same');
+                        setFolderInputValue('');
+                        setShowFolderDialog(true);
+                        setQuickMenuOpen(false);
                       }}
-                      style={{ padding: '8px 10px' }}
-                    >Add Folder</button>
+                      style={{ padding: '6px 10px', textAlign: 'left', border: '1px solid #ddd', borderRadius: 4, background: '#f8f8f8', cursor: 'pointer' }}
+                    >
+                      Add Folder (Same Level)
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFolderDialogMode('child');
+                        setFolderInputValue('');
+                        setShowFolderDialog(true);
+                        setQuickMenuOpen(false);
+                      }}
+                      style={{ padding: '6px 10px', textAlign: 'left', border: '1px solid #ddd', borderRadius: 4, background: '#f8f8f8', cursor: 'pointer' }}
+                    >
+                      Add Folder (Lower Level)
+                    </button>
                   </div>
                 </div>
               )}
             </div>
           </div>
+
+          {showRename && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.15)',
+              zIndex: 1200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 0.9
+            }}>
+              <div style={{ background: '#fff', padding: 16, borderRadius: 8, minWidth: 280, boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
+                <h4 style={{ marginTop: 0 }}>Rename Folder</h4>
+                <p style={{ marginTop: 0, color: '#555' }}>{selectedName}</p>
+                <input
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #ccc', marginBottom: 12 }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button onClick={() => setShowRename(false)} style={{ padding: '8px 12px' }}>Cancel</button>
+                  <button onClick={handleRename} style={{ padding: '8px 12px', background: '#007bff', color: '#fff', border: 'none', borderRadius: 6 }}>Save</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showShotDialog && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.15)',
+              zIndex: 1200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 0.9
+            }}>
+              <div style={{ background: '#fff', padding: 16, borderRadius: 8, minWidth: 320, boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
+                <h4 style={{ marginTop: 0 }}>Add Shot</h4>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, color: '#555', fontSize: '0.9em' }}>Shots Path:</label>
+                  <p style={{ marginTop: 0, marginBottom: 0, padding: 8, background: '#f0f0f0', borderRadius: 4, fontSize: '0.85em', wordBreak: 'break-all' }}>{projectPath}/shots</p>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, color: '#555', fontSize: '0.9em' }}>Shot Name:</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., sh010"
+                    value={shotInputValue}
+                    onChange={(e) => setShotInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        (async () => {
+                          if (!shotInputValue.trim()) { alert('Enter a shot name'); return; }
+                          const res = await window.electronAPI.addShot({ projectPath, shotName: shotInputValue, template: templates[selectedTemplate] });
+                          if (res?.success) {
+                            const refresh = await window.electronAPI.readProjectStructure(projectPath);
+                            if (refresh.success) setFolderTree(refresh.tree);
+                            setShowShotDialog(false);
+                            setShotInputValue('');
+                          } else {
+                            alert('Error: ' + (res?.error || 'Unknown'));
+                          }
+                        })();
+                      }
+                    }}
+                    style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #ccc' }}
+                    autoFocus
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button onClick={() => { setShowShotDialog(false); setShotInputValue(''); }} style={{ padding: '8px 12px' }}>Cancel</button>
+                  <button
+                    onClick={async () => {
+                      if (!shotInputValue.trim()) { alert('Enter a shot name'); return; }
+                      const res = await window.electronAPI.addShot({ projectPath, shotName: shotInputValue, template: templates[selectedTemplate] });
+                      if (res?.success) {
+                        const refresh = await window.electronAPI.readProjectStructure(projectPath);
+                        if (refresh.success) setFolderTree(refresh.tree);
+                        setShowShotDialog(false);
+                        setShotInputValue('');
+                      } else {
+                        alert('Error: ' + (res?.error || 'Unknown'));
+                      }
+                    }}
+                    style={{ padding: '8px 12px', background: '#28a745', color: '#fff', border: 'none', borderRadius: 6 }}
+                  >
+                    Add Shot
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showFolderDialog && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.15)',
+              zIndex: 1200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 0.9
+            }}>
+              <div style={{ background: '#fff', padding: 16, borderRadius: 8, minWidth: 320, boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
+                <h4 style={{ marginTop: 0 }}>Add Folder {folderDialogMode === 'same' ? '(Same Level)' : '(Lower Level)'}</h4>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, color: '#555', fontSize: '0.9em' }}>Selected Folder:</label>
+                  <p style={{ marginTop: 0, marginBottom: 0, padding: 8, background: '#f0f0f0', borderRadius: 4, fontSize: '0.85em', wordBreak: 'break-all' }}>{selectedName}</p>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, color: '#555', fontSize: '0.9em' }}>New Folder Name:</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., renders"
+                    value={folderInputValue}
+                    onChange={(e) => setFolderInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        (async () => {
+                          if (!folderInputValue.trim()) { alert('Enter a folder name'); return; }
+                          const rel = pathToRelative(selectedPath);
+                          let targetPath;
+                          if (folderDialogMode === 'same') {
+                            const parentPath = rel.split('/').slice(0, -1).join('/');
+                            targetPath = parentPath ? `${parentPath}/${folderInputValue}` : folderInputValue;
+                          } else {
+                            targetPath = rel ? `${rel}/${folderInputValue}` : folderInputValue;
+                          }
+                          const res = await window.electronAPI.addFolder({ projectPath, relativePath: targetPath });
+                          if (res?.success) {
+                            const refresh = await window.electronAPI.readProjectStructure(projectPath);
+                            if (refresh.success) setFolderTree(refresh.tree);
+                            setShowFolderDialog(false);
+                            setFolderInputValue('');
+                          } else {
+                            alert('Error: ' + (res?.error || 'Unknown'));
+                          }
+                        })();
+                      }
+                    }}
+                    style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #ccc' }}
+                    autoFocus
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button onClick={() => { setShowFolderDialog(false); setFolderInputValue(''); }} style={{ padding: '8px 12px' }}>Cancel</button>
+                  <button
+                    onClick={async () => {
+                      if (!folderInputValue.trim()) { alert('Enter a folder name'); return; }
+                      const rel = pathToRelative(selectedPath);
+                      let targetPath;
+                      if (folderDialogMode === 'same') {
+                        const parentPath = rel.split('/').slice(0, -1).join('/');
+                        targetPath = parentPath ? `${parentPath}/${folderInputValue}` : folderInputValue;
+                      } else {
+                        targetPath = rel ? `${rel}/${folderInputValue}` : folderInputValue;
+                      }
+                      const res = await window.electronAPI.addFolder({ projectPath, relativePath: targetPath });
+                      if (res?.success) {
+                        const refresh = await window.electronAPI.readProjectStructure(projectPath);
+                        if (refresh.success) setFolderTree(refresh.tree);
+                        setShowFolderDialog(false);
+                        setFolderInputValue('');
+                      } else {
+                        alert('Error: ' + (res?.error || 'Unknown'));
+                      }
+                    }}
+                    style={{ padding: '8px 12px', background: '#28a745', color: '#fff', border: 'none', borderRadius: 6 }}
+                  >
+                    Add Folder
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div style={{ padding: '24px' }}>
             <h2 style={{ marginTop: 0 }}>Project: {projectPath || 'Unknown'}</h2>
@@ -329,6 +581,11 @@ function App() {
                       });
                     }}
                     nodeRefs={nodeRefs}
+                    onSelect={(path, name) => {
+                      setSelectedPath(path);
+                      setSelectedName(name);
+                      setRenameValue(name);
+                    }}
                   />
                 ) : (
                   <p>No structure loaded.</p>
@@ -345,17 +602,22 @@ function App() {
 export default App;
 
 // Minimal tree component
-function TreeNode({ node, level = 0, path = '', expandedPaths, onToggle, nodeRefs }) {
+function TreeNode({ node, level = 0, path = '', expandedPaths, onToggle, nodeRefs, onSelect }) {
   const hasChildren = node.children && node.children.length > 0;
   const gap = 24;
   const nodePath = (path.endsWith('/') ? path : path + '/') + (node.name || '');
-  const isExpanded = expandedPaths?.has(nodePath);
+  const isExpanded = expandedPaths?.has(nodePath) ?? true;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <button
         ref={(el) => { if (el) nodeRefs.current[nodePath] = el; }}
-        onClick={() => { if (hasChildren) onToggle(nodePath); }}
+        onClick={() => {
+          if (onSelect) onSelect(nodePath, node.name);
+        }}
+        onDoubleClick={() => {
+          if (hasChildren) onToggle(nodePath);
+        }}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -364,9 +626,9 @@ function TreeNode({ node, level = 0, path = '', expandedPaths, onToggle, nodeRef
           borderRadius: 4,
           padding: '4px 8px',
           background: '#fafafa',
-          cursor: hasChildren ? 'pointer' : 'default'
+          cursor: 'pointer'
         }}
-        title={hasChildren ? (isExpanded ? 'Collapse' : 'Expand') : 'Leaf'}
+        title={hasChildren ? 'Double-click to toggle' : 'Leaf node'}
       >
         <span>{hasChildren ? (isExpanded ? '📂' : '📁') : '📄'}</span>
         <span>{node.name}</span>
@@ -386,8 +648,10 @@ function TreeNode({ node, level = 0, path = '', expandedPaths, onToggle, nodeRef
             height: 1,
             background: '#ccc'
           }} />
-          {node.children.map((child, idx) => (
-            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {node.children.map((child) => {
+            const childPath = nodePath.endsWith('/') ? nodePath + child.name : `${nodePath}/${child.name}`;
+            return (
+              <div key={childPath} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ width: 1, height: 6, background: '#ccc' }} />
               <TreeNode
                 node={child}
@@ -396,9 +660,11 @@ function TreeNode({ node, level = 0, path = '', expandedPaths, onToggle, nodeRef
                 expandedPaths={expandedPaths}
                 onToggle={onToggle}
                 nodeRefs={nodeRefs}
+                onSelect={onSelect}
               />
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

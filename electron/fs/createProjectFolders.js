@@ -207,55 +207,20 @@ export function readProjectStructure(projectPath) {
       return { success: false, error: `Project path does not exist: ${projectPath}` };
     }
 
-    const projectName = path.basename(projectPath);
-    const tree = {
-      name: projectName,
-      children: []
+    const buildTree = (dir) => {
+      const name = path.basename(dir);
+      const node = { name, children: [] };
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      entries.forEach((entry) => {
+        if (entry.isDirectory()) {
+          const childPath = path.join(dir, entry.name);
+          node.children.push(buildTree(childPath));
+        }
+      });
+      return node;
     };
 
-    // Read all top-level folders
-    const entries = fs.readdirSync(projectPath, { withFileTypes: true });
-    
-    entries.forEach(entry => {
-      if (entry.isDirectory()) {
-        const folderNode = {
-          name: entry.name,
-          children: []
-        };
-
-        // If it's the shots folder, read the shots inside
-        if (entry.name === 'shots') {
-          const shotsPath = path.join(projectPath, 'shots');
-          const shotEntries = fs.readdirSync(shotsPath, { withFileTypes: true });
-          
-          shotEntries.forEach(shotEntry => {
-            if (shotEntry.isDirectory()) {
-              const shotNode = {
-                name: shotEntry.name,
-                children: []
-              };
-
-              // Read subfolders within each shot
-              const shotSubPath = path.join(shotsPath, shotEntry.name);
-              const subEntries = fs.readdirSync(shotSubPath, { withFileTypes: true });
-              
-              subEntries.forEach(subEntry => {
-                if (subEntry.isDirectory()) {
-                  shotNode.children.push({
-                    name: subEntry.name,
-                    children: []
-                  });
-                }
-              });
-
-              folderNode.children.push(shotNode);
-            }
-          });
-        }
-
-        tree.children.push(folderNode);
-      }
-    });
+    const tree = buildTree(projectPath);
 
     return {
       success: true,
@@ -282,6 +247,42 @@ export function addFolder({ projectPath, relativePath }) {
     const target = path.join(projectPath, relativePath);
     fs.mkdirSync(target, { recursive: true });
     return { success: true, path: target };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Renames a folder relative to the project root.
+ * @param {string} projectPath - Project root path
+ * @param {string} oldRelativePath - Existing folder path relative to root
+ * @param {string} newName - New folder name (no path separators)
+ */
+export function renameFolder({ projectPath, oldRelativePath, newName }) {
+  try {
+    if (!projectPath || !oldRelativePath || !newName) {
+      return { success: false, error: 'Missing projectPath, oldRelativePath, or newName' };
+    }
+
+    const safeName = newName.trim();
+    if (!safeName || safeName.includes('/') || safeName.includes('\\')) {
+      return { success: false, error: 'Invalid folder name' };
+    }
+
+    const oldAbs = path.join(projectPath, oldRelativePath);
+    if (!fs.existsSync(oldAbs)) {
+      return { success: false, error: 'Folder does not exist' };
+    }
+
+    const parentDir = path.dirname(oldAbs);
+    const newAbs = path.join(parentDir, safeName);
+    if (fs.existsSync(newAbs)) {
+      return { success: false, error: 'Target name already exists' };
+    }
+
+    fs.renameSync(oldAbs, newAbs);
+    const newRelativePath = path.relative(projectPath, newAbs);
+    return { success: true, newPath: newRelativePath };
   } catch (err) {
     return { success: false, error: err.message };
   }

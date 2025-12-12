@@ -3,7 +3,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createProjectFolders, addShot, readProjectStructure, addFolder } from "./fs/createProjectFolders.js";
+import { createProjectFolders, addShot, readProjectStructure, addFolder, renameFolder } from "./fs/createProjectFolders.js";
 
 
 // Get __dirname in ES module style
@@ -66,6 +66,11 @@ ipcMain.handle('read-project-structure', (event, projectPath) => {
 ipcMain.handle('add-folder', (event, data) => {
   console.log('📦 IPC received add-folder:', data);
   return addFolder(data);
+});
+
+ipcMain.handle('rename-folder', (event, data) => {
+  console.log('📦 IPC received rename-folder:', data);
+  return renameFolder(data);
 });
 
 

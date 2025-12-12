@@ -193,3 +193,96 @@ export function addShot({ projectPath, shotName, template }) {
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Reads the folder structure of an existing project and builds a tree.
+ * @param {string} projectPath - Path to the existing project root
+ * @returns {object} success/error with tree structure
+ */
+export function readProjectStructure(projectPath) {
+  console.log("🚀 readProjectStructure() called with:", projectPath);
+
+  try {
+    if (!fs.existsSync(projectPath)) {
+      return { success: false, error: `Project path does not exist: ${projectPath}` };
+    }
+
+    const projectName = path.basename(projectPath);
+    const tree = {
+      name: projectName,
+      children: []
+    };
+
+    // Read all top-level folders
+    const entries = fs.readdirSync(projectPath, { withFileTypes: true });
+    
+    entries.forEach(entry => {
+      if (entry.isDirectory()) {
+        const folderNode = {
+          name: entry.name,
+          children: []
+        };
+
+        // If it's the shots folder, read the shots inside
+        if (entry.name === 'shots') {
+          const shotsPath = path.join(projectPath, 'shots');
+          const shotEntries = fs.readdirSync(shotsPath, { withFileTypes: true });
+          
+          shotEntries.forEach(shotEntry => {
+            if (shotEntry.isDirectory()) {
+              const shotNode = {
+                name: shotEntry.name,
+                children: []
+              };
+
+              // Read subfolders within each shot
+              const shotSubPath = path.join(shotsPath, shotEntry.name);
+              const subEntries = fs.readdirSync(shotSubPath, { withFileTypes: true });
+              
+              subEntries.forEach(subEntry => {
+                if (subEntry.isDirectory()) {
+                  shotNode.children.push({
+                    name: subEntry.name,
+                    children: []
+                  });
+                }
+              });
+
+              folderNode.children.push(shotNode);
+            }
+          });
+        }
+
+        tree.children.push(folderNode);
+      }
+    });
+
+    return {
+      success: true,
+      tree: tree,
+      projectPath: projectPath
+    };
+
+  } catch (err) {
+    console.error("❌ Error reading project structure:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Adds an arbitrary folder (can be nested) relative to project root.
+ * @param {string} projectPath - Project root path
+ * @param {string} relativePath - Relative folder path to create (e.g., "assets/newFolder")
+ */
+export function addFolder({ projectPath, relativePath }) {
+  try {
+    if (!projectPath || !relativePath) {
+      return { success: false, error: 'Missing projectPath or relativePath' };
+    }
+    const target = path.join(projectPath, relativePath);
+    fs.mkdirSync(target, { recursive: true });
+    return { success: true, path: target };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}

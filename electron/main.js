@@ -1,9 +1,9 @@
 // electron/main.js
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createProjectFolders, addShot } from "./fs/createProjectFolders.js";
+import { createProjectFolders, addShot, readProjectStructure, addFolder } from "./fs/createProjectFolders.js";
 
 
 // Get __dirname in ES module style
@@ -49,6 +49,23 @@ ipcMain.handle("create-project", (event, data) => {
 ipcMain.handle("add-shot", (event, data) => {
   console.log("📦 IPC received add-shot:", data);
   return addShot(data);
+});
+
+ipcMain.handle('open-folder-dialog', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  });
+  return result.filePaths[0] || null;
+});
+
+ipcMain.handle('read-project-structure', (event, projectPath) => {
+  console.log("📦 IPC received read-project-structure:", projectPath);
+  return readProjectStructure(projectPath);
+});
+
+ipcMain.handle('add-folder', (event, data) => {
+  console.log('📦 IPC received add-folder:', data);
+  return addFolder(data);
 });
 
 
